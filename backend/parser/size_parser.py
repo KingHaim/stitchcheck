@@ -58,16 +58,97 @@ def map_sizes_to_counts(sizes: list[str], counts: list[int]) -> dict[str, int]:
     return result
 
 
+# Patterns for stitch-count assertions anywhere in the document (not just row lines)
+# [56, 60, 66] st or [56, 60, 66, 68, 76, 84 st for each leg]
+_ASSERTION_BRACKET = re.compile(
+    r"\[\s*([\d\s,]+)\s+(?:st(?:s|itches)?\.?)(?:\s+[^\]]*)?\]|\[\s*([\d\s,]+)\s*\]\s*(?:st(?:s|itches)?\.?)",
+    re.IGNORECASE,
+)
+_ASSERTION_PAREN = re.compile(
+    r"\(\s*([\d\s,]+)\s*\)\s*(?:st(?:s|itches)?|st\.)",
+    re.IGNORECASE,
+)
+_ASSERTION_DASH = re.compile(
+    r"[-–—]\s*([\d\s,]+)\s*st(?:s|itches)?\s*\.?\s*$",
+    re.IGNORECASE,
+)
+
+
+def extract_all_stitch_assertions(text: str) -> list[dict]:
+    """
+    Scan the full document for stitch-count assertions (e.g. [56, 60, 66] st, — 112 sts).
+    Returns list of {line: int, counts: list[int], raw_text: str}.
+    """
+    results: list[dict] = []
+    lines = text.split("\n")
+    seen_at_line: dict[int, str] = {}  # avoid duplicate (line, raw) from same line
+
+    for line_num, line in enumerate(lines, 1):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        # Skip lines that are "remain" context (e.g. "X sts remain on needle")
+        if re.search(r"sts?\s+remain|remain\s+on", stripped, re.IGNORECASE):
+            continue
+        # Bracketed list: [56, 60, 66, 68, 76, 84] st — skip "X st increased/decreased" (that's change, not total)
+        for m in _ASSERTION_BRACKET.finditer(stripped):
+            raw = m.group(0)
+            if re.search(r"increased?|decreased?", raw, re.IGNORECASE):
+                continue
+            key = (line_num, raw)
+            if key in seen_at_line:
+                continue
+            seen_at_line[key] = raw
+            nums = (m.group(1) or m.group(2) or "").strip()
+            counts = parse_multi_size_values(nums) if nums else []
+            if counts:
+                results.append({"line": line_num, "counts": counts, "raw_text": raw})
+        # Parenthetical: (108, 116, 124) sts — only if clearly stitch count (not "4st increased")
+        for m in _ASSERTION_PAREN.finditer(stripped):
+            raw = m.group(0)
+            key = (line_num, raw)
+            if key in seen_at_line:
+                continue
+            # Skip "Nst increased" style
+            if re.search(r"increased?|decreased?", raw, re.IGNORECASE):
+                continue
+            seen_at_line[key] = raw
+            counts = parse_multi_size_values(m.group(1))
+            if counts:
+                results.append({"line": line_num, "counts": counts, "raw_text": raw})
+        # Dash at end: — 112 sts
+        m = _ASSERTION_DASH.search(stripped)
+        if m:
+            raw = m.group(0)
+            key = (line_num, raw)
+            if key not in seen_at_line:
+                seen_at_line[key] = raw
+                counts = parse_multi_size_values(m.group(1))
+                if counts:
+                    results.append({"line": line_num, "counts": counts, "raw_text": raw})
+
+    return results
+
+
 def extract_stated_stitch_count(text: str) -> list[int] | None:
     """
-    Extract stated stitch count from end-of-row markers like '(42 sts)' or '[42 sts]'.
-    Supports multi-size counts.
+    Extract stated stitch count from end-of-row markers like '(42 sts)' or '— 42 sts'.
+    Only matches when it's clearly the row's result count, not e.g. "[108, 116...] st remain"
+    or "Knit 4, 4, 4, 6, 6, 6 st" in the middle of instructions.
     """
-    m = re.search(r"[\(\[]([\d\s,()]+)\s*sts?\s*[\)\]]", text, re.IGNORECASE)
+    text = text.strip()
+    # Ignore lines that say "remain" (e.g. "[108, 116...] st remain on the needles")
+    if re.search(r"sts?\s+remain|remain\s+on", text, re.IGNORECASE):
+        return None
+
+    # Explicit end-of-row: "— 108 sts" or "— 108, 116, 128 sts" at end of line
+    m = re.search(r"[-–—]\s*([\d\s,()]+)\s*sts?\s*\.?\s*$", text, re.IGNORECASE)
     if m:
         return parse_multi_size_values(m.group(1))
 
-    m = re.search(r"[-–—]\s*([\d\s,()]+)\s*sts?\s*\.?\s*$", text, re.IGNORECASE)
+    # Parenthetical at end: "(108 sts)" or "(4st increased)" — only (X sts) not (Xst increased)
+    tail = text[-55:] if len(text) > 55 else text
+    m = re.search(r"\(\s*([\d\s,]+)\s*sts?\s*\)\s*$", tail, re.IGNORECASE)
     if m:
         return parse_multi_size_values(m.group(1))
 

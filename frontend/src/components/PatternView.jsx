@@ -1,4 +1,26 @@
-export default function PatternView({ sections, selectedSize }) {
+import { useEffect, useRef } from 'react'
+
+export default function PatternView({ sections, selectedSize, scrollToRowKey, onScrolled }) {
+  const highlightTimeoutRef = useRef(null)
+
+  useEffect(() => {
+    if (!scrollToRowKey || scrollToRowKey.sectionIndex == null || scrollToRowKey.rowIndex == null) return
+    const id = `pattern-row-${scrollToRowKey.sectionIndex}-${scrollToRowKey.rowIndex}`
+    const el = document.getElementById(id)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.classList.add('pattern-row-highlight')
+      if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current)
+      highlightTimeoutRef.current = setTimeout(() => {
+        el.classList.remove('pattern-row-highlight')
+        highlightTimeoutRef.current = null
+        onScrolled?.()
+      }, 2500)
+    } else {
+      onScrolled?.()
+    }
+  }, [scrollToRowKey, onScrolled])
+
   if (!sections?.length) {
     return (
       <div className="empty-state">
@@ -33,11 +55,13 @@ export default function PatternView({ sections, selectedSize }) {
 
               const calcSts = row.calculated_sts?.[selectedSize]
               const expSts = row.expected_sts?.[selectedSize]
-              const mismatch = expSts != null && calcSts != null && expSts !== calcSts
+              // Only show as mismatch (red) when we actually reported an error — not when backend suppressed a stale "expected"
+              const mismatch = hasError && expSts != null && calcSts != null && expSts !== calcSts
 
               return (
                 <div
                   key={ri}
+                  id={`pattern-row-${si}-${ri}`}
                   className={`pattern-row ${hasError ? 'has-error' : ''} ${hasWarning ? 'has-warning' : ''}`}
                 >
                   <div className="row-number">

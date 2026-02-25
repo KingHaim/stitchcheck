@@ -1,5 +1,6 @@
 from __future__ import annotations
 from models.pattern import Pattern, Row, RepeatBlock, OperationType
+from parser.size_parser import extract_all_stitch_assertions
 
 
 def _calculate_repeat_block(
@@ -76,6 +77,9 @@ def calculate_row_stitches(
     if row.is_repeat_ref:
         return starting_sts, errors, warnings
 
+    if row.cast_on_extra is not None:
+        return starting_sts + row.cast_on_extra, errors, warnings
+
     if any(op.op_type == OperationType.WORK_EVEN for op in row.operations):
         return starting_sts, errors, warnings
 
@@ -109,12 +113,34 @@ def calculate_row_stitches(
 
     ending = starting_sts + net_change
 
+    # Cast-on row (Row 0) defines the starting count; don't report mismatch there
+    if row.number == 0:
+        if row.expected_sts and size in row.expected_sts:
+            ending = row.expected_sts[size]
+        return max(ending, 0), errors, warnings
+
     if row.expected_sts and size in row.expected_sts:
         expected = row.expected_sts[size]
-        if ending != expected:
-            errors.append(
-                f"Stitch count mismatch: calculated {ending} sts, expected {expected} sts"
-            )
+        # Skip false positives when "expected" is clearly stale:
+        # 1) Expected equals starting count but this row has inc/dec → expected is pre-row count.
+        # 2) This row has no inc/dec but expected < ending → expected is from before a previous increase.
+        if expected == starting_sts and net_change != 0:
+            pass  # skip
+        elif net_change == 0 and expected < ending:
+            pass  # skip: expected is likely pre–increase-round count
+        elif ending != expected:
+            if net_change > 0:
+                errors.append(
+                    f"Stitch count mismatch: calculated {ending} sts (includes +{net_change} from increases in this row), pattern states {expected} sts — pattern may need updating."
+                )
+            elif net_change < 0:
+                errors.append(
+                    f"Stitch count mismatch: calculated {ending} sts (includes {net_change} from decreases in this row), pattern states {expected} sts"
+                )
+            else:
+                errors.append(
+                    f"Stitch count mismatch: calculated {ending} sts, pattern states {expected} sts"
+                )
 
     return max(ending, 0), errors, warnings
 
@@ -138,6 +164,11 @@ def validate_pattern(pattern: Pattern) -> Pattern:
                 if row.calculated_sts is None:
                     row.calculated_sts = {}
                 row.calculated_sts[size] = ending
+                # Row 0 (cast-on): use expected_sts as authority so next row has correct starting count
+                if row.number == 0 and row.expected_sts and size in row.expected_sts:
+                    row.calculated_sts[size] = row.expected_sts[size]
+                    current_sts = row.expected_sts[size]
+                    continue
 
                 for err in row_errors:
                     row_label = f"Row {row.number}" if row.number is not None else "Instruction"
@@ -166,7 +197,67 @@ def validate_pattern(pattern: Pattern) -> Pattern:
                 current_sts = ending
 
     _check_cross_row_consistency(pattern)
+    _check_document_stitch_assertions(pattern)
     return pattern
+
+
+def _check_document_stitch_assertions(pattern: Pattern) -> None:
+    """
+    Check every stitch-count assertion in the full document (not just Row N: lines)
+    against the computed count at that line. Reports mismatches.
+    """
+    if not pattern.sizes:
+        return
+    # Build (line_number, row, calculated_sts) in document order for assertion checks
+    row_line_sts: list[tuple[int, Row, dict[str, int]]] = []
+    for section in pattern.sections:
+        for row in section.rows:
+            if row.line_number is not None and row.calculated_sts:
+                row_line_sts.append((row.line_number, row, dict(row.calculated_sts)))
+    row_line_sts.sort(key=lambda x: x[0])
+
+    assertions = extract_all_stitch_assertions(pattern.raw_text)
+    for a in assertions:
+        line_num = a["line"]
+        counts = a["counts"]
+        raw_snippet = a["raw_text"]
+        # Which row's count applies? Last row that starts at or before this line
+        applied_row: Row | None = None
+        applied_sts: dict[str, int] | None = None
+        for ln, row, sts in row_line_sts:
+            if ln <= line_num:
+                applied_row = row
+                applied_sts = sts
+            else:
+                break
+        if applied_sts is None:
+            continue
+        # Skip if this assertion is on the same line as a row (already validated as row expected_sts)
+        if applied_row and applied_row.line_number == line_num:
+            continue
+        # Map assertion counts to sizes
+        if len(counts) == len(pattern.sizes):
+            stated = {pattern.sizes[i]: counts[i] for i in range(len(pattern.sizes))}
+        elif len(counts) == 1:
+            stated = {s: counts[0] for s in pattern.sizes}
+        else:
+            continue
+        for size in pattern.sizes:
+            calc = applied_sts.get(size)
+            exp = stated.get(size)
+            if calc is not None and exp is not None and calc != exp:
+                row_label = f"Line {line_num}"
+                if applied_row and applied_row.number is not None:
+                    row_label = f"Row {applied_row.number} (pattern states count at line {line_num})"
+                pattern.errors.append({
+                    "type": "stitch_count",
+                    "size": size,
+                    "row": applied_row.number if applied_row else None,
+                    "row_label": row_label,
+                    "message": f"Stated count in pattern ({raw_snippet}) is {exp} sts but computed count at this point is {calc} sts",
+                    "raw_text": raw_snippet,
+                    "line": line_num,
+                })
 
 
 def _check_cross_row_consistency(pattern: Pattern) -> None:

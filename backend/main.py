@@ -17,7 +17,13 @@ from parser.pattern_parser import parse_pattern
 from validator.stitch_counter import validate_pattern
 from validator.format_checker import check_format, check_grammar
 from services.llm_enhanced_parser import enhance_pattern_with_llm
-from services.llm_service import llm_grammar_review
+from services.llm_service import llm_grammar_review, is_llm_available
+
+# LLM grammar messages we skip (known false positives)
+_LLM_GRAMMAR_BLOCKLIST = frozenset({
+    "duplicate table of content",
+    "duplicate table of contents",
+})
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -60,7 +66,10 @@ def _run_pipeline(raw_text: str, use_llm: bool = True) -> dict:
                 for issue in llm_issues:
                     if not isinstance(issue, dict) or not issue.get("message"):
                         continue
-                    if issue["message"].lower() in existing_messages:
+                    msg_lower = issue["message"].lower()
+                    if msg_lower in existing_messages:
+                        continue
+                    if any(blocked in msg_lower for blocked in _LLM_GRAMMAR_BLOCKLIST):
                         continue
                     issue.setdefault("type", "grammar")
                     issue.setdefault("severity", "warning")
@@ -161,5 +170,4 @@ async def analyze_text(body: dict):
 
 @app.get("/api/health")
 async def health():
-    has_token = bool(os.getenv("REPLICATE_API_TOKEN"))
-    return {"status": "ok", "llm_available": has_token}
+    return {"status": "ok", "llm_available": is_llm_available()}

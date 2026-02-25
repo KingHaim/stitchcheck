@@ -13,7 +13,7 @@ StitchCheck parses knitting patterns, validates stitch counts, detects errors, a
 - **Cross-Row Consistency**: Detect stitch count jumps between rows
 - **Grammar & Terminology**: Flag typos, US/UK term mixing, bracket imbalance
 - **Format Checks**: Verify presence of standard pattern sections
-- **AI-Enhanced Mode** (optional): Replicate LLM (Llama 3 70B) for better parsing of natural-language instructions and extra grammar review
+- **AI-Enhanced Mode** (optional): [Grok 4 via Replicate](https://replicate.com/xai/grok-4/api) (or xAI direct) reads the **full pattern** — every paragraph, explanations between rows, and in-between steps — for accurate stitch math and grammar review
 
 ## Architecture
 
@@ -27,7 +27,7 @@ backend/                  # Python FastAPI
 │   ├── stitch_parser.py  # Stitch instruction tokenizer
 │   └── size_parser.py    # Multi-size value parsing
 ├── services/
-│   ├── llm_service.py    # Replicate API calls (parse + grammar)
+│   ├── llm_service.py    # Grok (xAI) / Replicate API (parse + grammar)
 │   └── llm_enhanced_parser.py  # Merge LLM output into pattern model
 └── validator/
     ├── stitch_counter.py # Row-by-row stitch simulation
@@ -54,13 +54,16 @@ cd backend
 pip install -r requirements.txt
 ```
 
-Optional — enable AI-enhanced parsing and grammar review (Replicate):
+Optional — enable AI-enhanced parsing (Grok 4 via Replicate by default):
 
 ```bash
-# Create backend/.env with your Replicate API token
+# Create backend/.env with your Replicate API token (Grok 4 is the default model)
 echo "REPLICATE_API_TOKEN=your_token_here" > backend/.env
-# Optional: use 8B model (cheaper, less accurate) instead of 70B
-# echo "REPLICATE_MODEL=meta/meta-llama-3-8b-instruct" >> backend/.env
+# Optional: default model is xai/grok-4; override if needed
+# echo "REPLICATE_MODEL=xai/grok-4" >> backend/.env
+
+# Or use xAI API directly (no Replicate) by setting only:
+# echo "XAI_API_KEY=your_xai_key" > backend/.env
 ```
 
 Then:
@@ -85,7 +88,7 @@ Open http://localhost:5173 in your browser.
 Upload a `.docx`, `.pdf`, or `.txt` file for analysis. Query param: `use_llm=true` (default) or `use_llm=false`.
 
 ### POST /api/analyze-text
-Send raw pattern text as JSON: `{ "text": "...", "use_llm": true }`. If `REPLICATE_API_TOKEN` is set, AI-enhanced parsing and grammar review run when `use_llm` is true.
+Send raw pattern text as JSON: `{ "text": "...", "use_llm": true }`. If `REPLICATE_API_TOKEN` or `XAI_API_KEY` is set, AI-enhanced full-pattern parsing (Grok 4 via Replicate by default) and grammar review run when `use_llm` is true.
 
 ### GET /api/health
 Returns `{ "status": "ok", "llm_available": true/false }`.

@@ -10,6 +10,8 @@ STITCH_ALIASES: dict[str, str] = {
     "purl": "p",
     "slip": "sl",
     "slip 1": "sl1",
+    "slip marker": "sm",
+    "place marker": "pm",
     "k2 tog": "k2tog",
     "k 2 tog": "k2tog",
     "p2 tog": "p2tog",
@@ -20,6 +22,8 @@ STITCH_ALIASES: dict[str, str] = {
     "m 1 l": "m1l",
     "m 1 r": "m1r",
     "m 1": "m1",
+    "make 1 left": "m1l",
+    "make 1 right": "m1r",
     "yarn over": "yo",
     "bind off": "bo",
     "cast on": "co",
@@ -30,7 +34,7 @@ _STITCH_PATTERN = re.compile(
     (?P<op>
         k3tog|p3tog|k2tog|p2tog|ssk|ssp|sk2p|s2kp|cdd|
         kfb|pfb|m1l|m1r|m1p|m1|yo|
-        sl1|sl|wyif|wyib|
+        sl1|sl|wyif|wyib|sm|pm|
         bo|co|
         k|p
     )
@@ -47,6 +51,8 @@ def _op_type_from_str(s: str) -> OperationType:
         "p": OperationType.PURL,
         "sl": OperationType.SLIP,
         "sl1": OperationType.SLIP,
+        "sm": OperationType.SLIP,
+        "pm": OperationType.SLIP,
         "k2tog": OperationType.K2TOG,
         "ssk": OperationType.SSK,
         "p2tog": OperationType.P2TOG,
@@ -72,7 +78,7 @@ def _op_type_from_str(s: str) -> OperationType:
 def _stitches_consumed_per_one(op_str: str) -> int:
     """How many stitches from the needle does one instance of this op consume."""
     s = op_str.lower()
-    if s in ("yo", "m1", "m1l", "m1r", "m1p"):
+    if s in ("yo", "m1", "m1l", "m1r", "m1p", "sm", "pm"):
         return 0
     if s in ("k2tog", "ssk", "p2tog", "ssp"):
         return 2
@@ -152,10 +158,32 @@ def parse_repeat_block(text: str) -> RepeatBlock | None:
 def parse_instruction_segment(text: str) -> list[Operation]:
     tokens = re.split(r",\s*|\s+", text.strip())
     ops: list[Operation] = []
-    for token in tokens:
+    i = 0
+    while i < len(tokens):
+        token = tokens[i].strip().rstrip(",")
+        if not token:
+            i += 1
+            continue
         op = parse_stitch(token)
         if op:
             ops.append(op)
+            # If next token is a bare number, merge as count for k/p (e.g. "Knit 4" or multi-size "4, 4, 4, 6, 6, 6")
+            if ops and op.op_type in (OperationType.KNIT, OperationType.PURL) and i + 1 < len(tokens):
+                next_tok = tokens[i + 1].strip().rstrip(",")
+                if next_tok.isdigit():
+                    n = int(next_tok)
+                    if n >= 1:
+                        ops[-1].count = n
+                        ops[-1].raw = f"{op.raw.rstrip('0123456789')}{n}".strip() or op.raw
+                    i += 1
+        else:
+            # "slip marker" / "place marker": if last op was sl/slip, treat "marker" as sm
+            if token.lower() == "marker" and ops and ops[-1].raw.lower() in ("sl", "slip"):
+                ops[-1].raw = "sm"
+                ops[-1].count_effect = STITCH_EFFECTS.get("sm", 0)
+                ops[-1].stitches_consumed = _stitches_consumed_per_one("sm")
+            # skip filler words and "st" after numbers
+        i += 1
     return ops
 
 

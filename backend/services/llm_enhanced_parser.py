@@ -184,4 +184,45 @@ def enhance_pattern_with_llm(pattern: Pattern) -> Pattern:
                     "message": f"LLM detected section: {sec_name}",
                 })
 
+    # Merge between_steps: insert virtual rows after the row they refer to (full-pattern context)
+    between_steps = llm_result.get("between_steps", [])
+    if not isinstance(between_steps, list):
+        between_steps = []
+    steps_by_after: dict[int, list[dict]] = {}
+    for step in between_steps:
+        if not isinstance(step, dict):
+            continue
+        after = step.get("after_row")
+        if after is None:
+            continue
+        try:
+            after = int(after)
+        except (TypeError, ValueError):
+            continue
+        cast_extra = step.get("cast_on_extra")
+        if cast_extra is not None:
+            try:
+                cast_extra = int(cast_extra)
+            except (TypeError, ValueError):
+                cast_extra = None
+        if cast_extra is not None and cast_extra > 0:
+            steps_by_after.setdefault(after, []).append({
+                "cast_on_extra": cast_extra,
+                "description": step.get("description", ""),
+            })
+
+    for section in pattern.sections:
+        new_rows: list[Row] = []
+        for row in section.rows:
+            new_rows.append(row)
+            row_num = row.number
+            if row_num is not None and row_num in steps_by_after:
+                for step in steps_by_after[row_num]:
+                    extra_row = Row(
+                        raw_text=step.get("description", "") or f"Cast on {step['cast_on_extra']} more sts",
+                        cast_on_extra=step["cast_on_extra"],
+                    )
+                    new_rows.append(extra_row)
+        section.rows = new_rows
+
     return pattern

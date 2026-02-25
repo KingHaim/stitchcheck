@@ -491,6 +491,18 @@ body {
   border-color: var(--warning-border);
 }
 
+.pattern-row-highlight {
+  animation: highlight-row 0.4s ease-out;
+  box-shadow: 0 0 0 2px var(--accent);
+  background: var(--accent-light) !important;
+}
+
+@keyframes highlight-row {
+  0% { box-shadow: 0 0 0 4px var(--accent); }
+  70% { box-shadow: 0 0 0 2px var(--accent); }
+  100% { box-shadow: 0 0 0 2px var(--accent); }
+}
+
 .row-number {
   font-weight: 700;
   font-size: 13px;
@@ -656,6 +668,28 @@ body {
   border-radius: var(--radius-sm);
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+.error-card-goto-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-light);
+  border: 1px solid rgba(124, 58, 237, 0.3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.error-card-goto-btn:hover {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
 }
 
 /* ---- Section Headers ---- */

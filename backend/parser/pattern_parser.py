@@ -10,8 +10,14 @@ from parser.size_parser import (
     parse_multi_size_values,
 )
 
+# Row/Rnd/Round with number; allow : or — or - before instruction; optional (RS)/(WS); instruction can be empty
 _ROW_PATTERN = re.compile(
-    r"^(?:Row|Rnd|Round)\s+(\d+)\s*(?:\(([RW]S)\))?\s*:\s*(.+)",
+    r"^(?:Row|Rnd|Round)\s*\.?\s*(\d+)\s*(?:\(([RW]S)\))?\s*[:\-–—]?\s*(.*)",
+    re.IGNORECASE,
+)
+# "Next row 3:" or "Next rnd 5:" style
+_NEXT_ROW_PATTERN = re.compile(
+    r"^Next\s+(?:row|rnd|round)\s*\.?\s*(\d+)\s*(?:\(([RW]S)\))?\s*[:\-–—]?\s*(.*)",
     re.IGNORECASE,
 )
 
@@ -81,13 +87,31 @@ def parse_pattern(text: str) -> Pattern:
         if _CO_PATTERN.search(line):
             counts = parse_cast_on_line(line)
             if counts:
+                # Already have initial CO → "cast on N more" / extra CO in prose
+                if pattern.cast_on_counts:
+                    if len(counts) == 1:
+                        extra_row = Row(
+                            raw_text=line,
+                            line_number=i,
+                            cast_on_extra=counts[0],
+                        )
+                        current_section.rows.append(extra_row)
+                    continue
+                # Drop a leading outlier (e.g. needle "size 8" or "8 st" before the real counts)
+                if len(counts) >= 2 and counts[0] < 20 and all(c >= 20 for c in counts[1:]):
+                    counts = counts[1:]
                 if not pattern.sizes:
                     pattern.sizes = [f"Size{j + 1}" for j in range(len(counts))]
+                # If we still have more numbers than sizes, use last N
+                n_sizes = len(pattern.sizes)
+                if len(counts) > n_sizes:
+                    counts = counts[-n_sizes:]
                 pattern.cast_on_counts = map_sizes_to_counts(pattern.sizes, counts)
 
                 co_row = Row(
                     number=0,
                     raw_text=line,
+                    line_number=i,
                     expected_sts={s: c for s, c in pattern.cast_on_counts.items()},
                     calculated_sts={s: c for s, c in pattern.cast_on_counts.items()},
                 )
@@ -95,7 +119,7 @@ def parse_pattern(text: str) -> Pattern:
             continue
 
         m_section = _SECTION_PATTERN.match(line)
-        if m_section and not _ROW_PATTERN.match(line):
+        if m_section and not _ROW_PATTERN.match(line) and not _NEXT_ROW_PATTERN.match(line):
             name = m_section.group(1).strip()
             if len(name) > 3 and not any(
                 kw in name.lower()
@@ -108,18 +132,19 @@ def parse_pattern(text: str) -> Pattern:
         if _WORK_UNTIL_PATTERN.search(line):
             row = Row(
                 raw_text=line,
+                line_number=i,
                 is_repeat_ref=True,
                 segment_label=line,
             )
             current_section.rows.append(row)
             continue
 
-        m_row = _ROW_PATTERN.match(line)
+        m_row = _ROW_PATTERN.match(line) or _NEXT_ROW_PATTERN.match(line)
         if m_row:
             row_num = int(m_row.group(1))
             side = m_row.group(2).upper() if m_row.group(2) else None
-            instruction_text = m_row.group(3).strip()
-            is_round = line.lower().startswith("rnd") or line.lower().startswith("round")
+            instruction_text = (m_row.group(3) or "").strip()
+            is_round = line.lower().startswith("rnd") or line.lower().startswith("round") or "rnd" in line.lower()[:10]
 
             stated = extract_stated_stitch_count(instruction_text)
             expected_sts = None
@@ -133,6 +158,7 @@ def parse_pattern(text: str) -> Pattern:
             row = Row(
                 number=row_num,
                 raw_text=line,
+                line_number=i,
                 side=side,
                 is_round=is_round,
                 operations=flat_ops,

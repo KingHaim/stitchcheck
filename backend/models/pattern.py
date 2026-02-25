@@ -34,6 +34,8 @@ STITCH_EFFECTS: dict[str, int] = {
     "p": 0,
     "sl": 0,
     "sl1": 0,
+    "sm": 0,
+    "pm": 0,
     "wyif": 0,
     "wyib": 0,
     "k2tog": -1,
@@ -118,6 +120,7 @@ class RepeatBlock:
 class Row:
     number: Optional[int] = None
     raw_text: str = ""
+    line_number: Optional[int] = None  # 1-based line in raw_text where this row appears
     side: Optional[str] = None  # RS or WS
     is_round: bool = False
     operations: list[Operation] = field(default_factory=list)
@@ -128,6 +131,7 @@ class Row:
     warnings: list[str] = field(default_factory=list)
     is_repeat_ref: bool = False  # "work as established"
     segment_label: Optional[str] = None
+    cast_on_extra: Optional[int] = None  # e.g. "cast on 8 more" in prose — add this many sts
 
 
 @dataclass

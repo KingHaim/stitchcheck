@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import SummaryCards from './SummaryCards'
 import SizeSelector from './SizeSelector'
 import PatternView from './PatternView'
@@ -15,6 +15,42 @@ const TABS = [
 export default function ResultsView({ data, onReset }) {
   const [activeTab, setActiveTab] = useState('pattern')
   const [selectedSize, setSelectedSize] = useState(data.sizes?.[0] || '')
+  const [scrollToRowKey, setScrollToRowKey] = useState(null)
+
+  const { rowLocationByNumber, rowLocationByRawText } = useMemo(() => {
+    const byNumber = {}
+    const byRawText = {}
+    data.sections?.forEach((section, si) => {
+      section.rows?.forEach((row, ri) => {
+        if (row.number != null && byNumber[row.number] == null) {
+          byNumber[row.number] = { sectionIndex: si, rowIndex: ri }
+        }
+        const key = (row.raw_text || '').trim()
+        if (key && byRawText[key] == null) {
+          byRawText[key] = { sectionIndex: si, rowIndex: ri }
+        }
+      })
+    })
+    return { rowLocationByNumber: byNumber, rowLocationByRawText: byRawText }
+  }, [data.sections])
+
+  const handleGoToLocation = useCallback((item) => {
+    let key = null
+    if (item.row != null && rowLocationByNumber[item.row] != null) {
+      key = rowLocationByNumber[item.row]
+    } else if (item.raw_text != null) {
+      const trimmed = (item.raw_text || '').trim()
+      if (trimmed && rowLocationByRawText[trimmed] != null) {
+        key = rowLocationByRawText[trimmed]
+      }
+    }
+    if (key) {
+      setScrollToRowKey(key)
+      setActiveTab('pattern')
+    }
+  }, [rowLocationByNumber, rowLocationByRawText])
+
+  const clearScrollTarget = useCallback(() => setScrollToRowKey(null), [])
 
   const badgeCounts = {
     errors: data.summary?.stitch_count_errors || 0,
@@ -75,19 +111,44 @@ export default function ResultsView({ data, onReset }) {
       </div>
 
       {activeTab === 'pattern' && (
-        <PatternView sections={data.sections} selectedSize={selectedSize} />
+        <PatternView
+          sections={data.sections}
+          selectedSize={selectedSize}
+          scrollToRowKey={scrollToRowKey}
+          onScrolled={clearScrollTarget}
+        />
       )}
       {activeTab === 'errors' && (
-        <ErrorList items={data.errors} type="error" emptyMessage="No stitch count errors found" />
+        <ErrorList
+          items={data.errors}
+          type="error"
+          emptyMessage="No stitch count errors found"
+          onGoToLocation={handleGoToLocation}
+        />
       )}
       {activeTab === 'warnings' && (
-        <ErrorList items={data.warnings} type="warning" emptyMessage="No warnings found" />
+        <ErrorList
+          items={data.warnings}
+          type="warning"
+          emptyMessage="No warnings found"
+          onGoToLocation={handleGoToLocation}
+        />
       )}
       {activeTab === 'grammar' && (
-        <ErrorList items={data.grammar_issues} type="info" emptyMessage="No grammar issues found" />
+        <ErrorList
+          items={data.grammar_issues}
+          type="info"
+          emptyMessage="No grammar issues found"
+          onGoToLocation={handleGoToLocation}
+        />
       )}
       {activeTab === 'format' && (
-        <ErrorList items={data.format_issues} type="info" emptyMessage="No format issues found" />
+        <ErrorList
+          items={data.format_issues}
+          type="info"
+          emptyMessage="No format issues found"
+          onGoToLocation={handleGoToLocation}
+        />
       )}
     </div>
   )
