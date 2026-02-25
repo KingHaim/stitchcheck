@@ -8,6 +8,7 @@ function App() {
   const [results, setResults] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [useLlm, setUseLlm] = useState(true)
 
   const analyzeFile = async (file) => {
     setLoading(true)
@@ -15,7 +16,8 @@ function App() {
     try {
       const form = new FormData()
       form.append('file', file)
-      const res = await fetch(`${API_BASE}/api/analyze`, { method: 'POST', body: form })
+      const url = `${API_BASE}/api/analyze?use_llm=${useLlm}`
+      const res = await fetch(url, { method: 'POST', body: form })
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}))
         throw new Error(errData.detail || `Server error: ${res.status}`)
@@ -35,7 +37,7 @@ function App() {
       const res = await fetch(`${API_BASE}/api/analyze-text`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, use_llm: useLlm }),
       })
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}))
@@ -83,12 +85,19 @@ function App() {
         {loading && (
           <div className="loading-overlay">
             <div className="spinner" />
-            <div className="loading-text">Analyzing your pattern…</div>
+            <div className="loading-text">
+              {useLlm ? 'AI-enhanced analysis in progress…' : 'Analyzing your pattern…'}
+            </div>
           </div>
         )}
 
         {!loading && !results && (
-          <FileUpload onFileSelect={analyzeFile} onTextSubmit={analyzeText} />
+          <FileUpload
+            onFileSelect={analyzeFile}
+            onTextSubmit={analyzeText}
+            useLlm={useLlm}
+            onToggleLlm={() => setUseLlm(!useLlm)}
+          />
         )}
 
         {!loading && results && (

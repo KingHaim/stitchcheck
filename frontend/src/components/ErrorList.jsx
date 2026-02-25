@@ -60,6 +60,9 @@ export default function ErrorList({ items, type, emptyMessage }) {
               {item.severity && !item.size && (
                 <span className="error-card-size">{item.severity}</span>
               )}
+              {item.source === 'llm' && (
+                <span className="llm-source-tag">AI</span>
+              )}
             </div>
             <div className="error-card-message">{item.message}</div>
             {item.raw_text && (

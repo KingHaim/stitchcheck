@@ -13,6 +13,7 @@ StitchCheck parses knitting patterns, validates stitch counts, detects errors, a
 - **Cross-Row Consistency**: Detect stitch count jumps between rows
 - **Grammar & Terminology**: Flag typos, US/UK term mixing, bracket imbalance
 - **Format Checks**: Verify presence of standard pattern sections
+- **AI-Enhanced Mode** (optional): Replicate LLM (Llama 3 70B) for better parsing of natural-language instructions and extra grammar review
 
 ## Architecture
 
@@ -25,6 +26,9 @@ backend/                  # Python FastAPI
 │   ├── pattern_parser.py # Full pattern → structured data
 │   ├── stitch_parser.py  # Stitch instruction tokenizer
 │   └── size_parser.py    # Multi-size value parsing
+├── services/
+│   ├── llm_service.py    # Replicate API calls (parse + grammar)
+│   └── llm_enhanced_parser.py  # Merge LLM output into pattern model
 └── validator/
     ├── stitch_counter.py # Row-by-row stitch simulation
     └── format_checker.py # Grammar, terminology, format checks
@@ -48,6 +52,20 @@ frontend/                 # React + Vite
 ```bash
 cd backend
 pip install -r requirements.txt
+```
+
+Optional — enable AI-enhanced parsing and grammar review (Replicate):
+
+```bash
+# Create backend/.env with your Replicate API token
+echo "REPLICATE_API_TOKEN=your_token_here" > backend/.env
+# Optional: use 8B model (cheaper, less accurate) instead of 70B
+# echo "REPLICATE_MODEL=meta/meta-llama-3-8b-instruct" >> backend/.env
+```
+
+Then:
+
+```bash
 uvicorn main:app --reload --port 8000
 ```
 
@@ -64,10 +82,10 @@ Open http://localhost:5173 in your browser.
 ## API
 
 ### POST /api/analyze
-Upload a `.docx`, `.pdf`, or `.txt` file for analysis.
+Upload a `.docx`, `.pdf`, or `.txt` file for analysis. Query param: `use_llm=true` (default) or `use_llm=false`.
 
 ### POST /api/analyze-text
-Send raw pattern text as JSON `{ "text": "..." }`.
+Send raw pattern text as JSON: `{ "text": "...", "use_llm": true }`. If `REPLICATE_API_TOKEN` is set, AI-enhanced parsing and grammar review run when `use_llm` is true.
 
 ### GET /api/health
-Health check endpoint.
+Returns `{ "status": "ok", "llm_available": true/false }`.

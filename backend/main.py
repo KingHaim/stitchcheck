@@ -1,10 +1,14 @@
 from __future__ import annotations
 import sys
 import os
+import logging
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from dotenv import load_dotenv
+load_dotenv()
+
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -12,8 +16,13 @@ from parser.text_extractor import extract_text, clean_text
 from parser.pattern_parser import parse_pattern
 from validator.stitch_counter import validate_pattern
 from validator.format_checker import check_format, check_grammar
+from services.llm_enhanced_parser import enhance_pattern_with_llm
+from services.llm_service import llm_grammar_review
 
-app = FastAPI(title="Knitting Tech Editor", version="1.0.0")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="Knitting Tech Editor", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -24,7 +33,48 @@ app.add_middleware(
 )
 
 
-def _pattern_to_dict(pattern) -> dict:
+def _run_pipeline(raw_text: str, use_llm: bool = True) -> dict:
+    raw_text = clean_text(raw_text)
+
+    pattern = parse_pattern(raw_text)
+
+    llm_used = False
+    if use_llm:
+        try:
+            pattern = enhance_pattern_with_llm(pattern)
+            llm_used = True
+            logger.info("LLM-enhanced parsing complete")
+        except Exception as e:
+            logger.warning(f"LLM parsing failed, falling back to deterministic: {e}")
+
+    pattern = validate_pattern(pattern)
+    pattern.format_issues = check_format(pattern)
+    pattern.grammar_issues = check_grammar(pattern)
+
+    if use_llm:
+        try:
+            llm_issues = llm_grammar_review(raw_text)
+            if llm_issues:
+                existing_messages = {g["message"].lower() for g in pattern.grammar_issues}
+                added = 0
+                for issue in llm_issues:
+                    if not isinstance(issue, dict) or not issue.get("message"):
+                        continue
+                    if issue["message"].lower() in existing_messages:
+                        continue
+                    issue.setdefault("type", "grammar")
+                    issue.setdefault("severity", "warning")
+                    issue["source"] = "llm"
+                    pattern.grammar_issues.append(issue)
+                    added += 1
+                logger.info(f"LLM grammar review: {len(llm_issues)} found, {added} new added")
+        except Exception as e:
+            logger.warning(f"LLM grammar review failed: {e}")
+
+    return _pattern_to_dict(pattern, llm_used)
+
+
+def _pattern_to_dict(pattern, llm_used: bool = False) -> dict:
     sections = []
     for section in pattern.sections:
         rows = []
@@ -64,6 +114,7 @@ def _pattern_to_dict(pattern) -> dict:
         "warnings": pattern.warnings,
         "grammar_issues": pattern.grammar_issues,
         "format_issues": pattern.format_issues,
+        "llm_enhanced": llm_used,
         "summary": {
             "stitch_count_errors": len(stitch_errors),
             "repetition_mismatches": len(repeat_errors),
@@ -72,12 +123,16 @@ def _pattern_to_dict(pattern) -> dict:
             "format_warnings": len(pattern.format_issues),
             "total_rows_parsed": sum(len(s.rows) for s in pattern.sections),
             "total_sizes": len(pattern.sizes),
+            "llm_enhanced": llm_used,
         },
     }
 
 
 @app.post("/api/analyze")
-async def analyze_pattern(file: UploadFile = File(...)):
+async def analyze_pattern(
+    file: UploadFile = File(...),
+    use_llm: bool = Query(True, description="Enable LLM-enhanced parsing"),
+):
     if not file.filename:
         raise HTTPException(400, "No file provided")
 
@@ -91,31 +146,20 @@ async def analyze_pattern(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(400, f"Failed to extract text: {e}")
 
-    raw_text = clean_text(raw_text)
-
-    pattern = parse_pattern(raw_text)
-    pattern = validate_pattern(pattern)
-    pattern.format_issues = check_format(pattern)
-    pattern.grammar_issues = check_grammar(pattern)
-
-    return JSONResponse(_pattern_to_dict(pattern))
+    return JSONResponse(_run_pipeline(raw_text, use_llm=use_llm))
 
 
 @app.post("/api/analyze-text")
 async def analyze_text(body: dict):
     raw_text = body.get("text", "")
+    use_llm = body.get("use_llm", True)
     if not raw_text.strip():
         raise HTTPException(400, "No text provided")
 
-    raw_text = clean_text(raw_text)
-    pattern = parse_pattern(raw_text)
-    pattern = validate_pattern(pattern)
-    pattern.format_issues = check_format(pattern)
-    pattern.grammar_issues = check_grammar(pattern)
-
-    return JSONResponse(_pattern_to_dict(pattern))
+    return JSONResponse(_run_pipeline(raw_text, use_llm=use_llm))
 
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok"}
+    has_token = bool(os.getenv("REPLICATE_API_TOKEN"))
+    return {"status": "ok", "llm_available": has_token}

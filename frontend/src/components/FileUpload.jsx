@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 
-export default function FileUpload({ onFileSelect, onTextSubmit }) {
+export default function FileUpload({ onFileSelect, onTextSubmit, useLlm, onToggleLlm }) {
   const [dragging, setDragging] = useState(false)
   const [text, setText] = useState('')
   const inputRef = useRef(null)
@@ -24,6 +24,24 @@ export default function FileUpload({ onFileSelect, onTextSubmit }) {
         Upload a knitting pattern or paste it below. We'll validate stitch counts,
         check for errors, and review formatting.
       </p>
+
+      <div className="llm-toggle">
+        <label className="toggle-wrapper" onClick={onToggleLlm}>
+          <div className={`toggle-track ${useLlm ? 'active' : ''}`}>
+            <div className="toggle-thumb" />
+          </div>
+          <div className="toggle-label">
+            <span className="toggle-title">
+              {useLlm ? 'AI-Enhanced' : 'Standard'}
+            </span>
+            <span className="toggle-description">
+              {useLlm
+                ? 'LLM parses complex instructions + grammar review'
+                : 'Deterministic regex parsing only'}
+            </span>
+          </div>
+        </label>
+      </div>
 
       <div
         className={`upload-zone ${dragging ? 'dragging' : ''}`}
@@ -71,11 +89,19 @@ Row 3: k2tog, k to end (56 sts)
             disabled={!text.trim()}
             onClick={() => onTextSubmit(text)}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="16 18 22 12 16 6" />
-              <polyline points="8 6 2 12 8 18" />
-            </svg>
-            Analyze Pattern
+            {useLlm && (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z" />
+                <circle cx="12" cy="15" r="2" />
+              </svg>
+            )}
+            {!useLlm && (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="16 18 22 12 16 6" />
+                <polyline points="8 6 2 12 8 18" />
+              </svg>
+            )}
+            {useLlm ? 'Analyze with AI' : 'Analyze Pattern'}
           </button>
         </div>
       </div>
