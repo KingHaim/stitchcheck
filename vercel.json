@@ -3,5 +3,9 @@
   "outputDirectory": "frontend/dist",
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
-  ]
+  ],
+  "functions": {
+    "api/analyze.py": { "maxDuration": 300 },
+    "api/analyze-text.py": { "maxDuration": 300 }
+  }
 }

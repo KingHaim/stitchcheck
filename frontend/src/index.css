@@ -297,6 +297,13 @@ body {
   color: var(--text-secondary);
 }
 
+.loading-hint {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  opacity: 0.9;
+}
+
 /* ---- Results Layout ---- */
 
 .results-header {

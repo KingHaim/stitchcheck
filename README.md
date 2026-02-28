@@ -87,11 +87,23 @@ Open http://localhost:5173 in your browser.
 This repo is set up to run **both** the React frontend and the FastAPI backend on **Vercel**:
 
 - **Build:** builds the frontend; output is `frontend/dist`.
-- **API:** `api/[...path].py` is a catch-all serverless function that runs the FastAPI app, so `/api/analyze`, `/api/analyze-text`, and `/api/health` work on the same host.
+- **API:** `api/analyze.py`, `api/analyze-text.py`, and `api/health.py` run the FastAPI backend so `/api/analyze`, `/api/analyze-text`, and `/api/health` work on the same host. `vercel.json` sets **maxDuration: 300** (5 min) for the analyze routes so the LLM (Replicate/Grok) can finish before the function times out.
 
 No `VITE_API_URL` is needed (same origin). In the Vercel project, set **Environment Variables**: `REPLICATE_API_TOKEN` (and optionally `REPLICATE_MODEL`) for AI-enhanced mode.
 
-**Alternative (backend elsewhere):** If you host the backend on Railway, Render, etc., set `VITE_API_URL` in Vercel to that backend URL so the frontend calls it instead of same-origin `/api`.
+**504 Gateway Timeout?** The backend calls Replicate (Grok), which can take 2–6+ minutes. On **Vercel Hobby** the function limit is 10s, so you’ll get 504. Use a **Pro** plan (or higher) so the 5‑minute limit applies, or move the backend to **Railway** (recommended, see below).
+
+### Backend on Railway (recommended if not on Vercel Pro)
+
+No request time limit — the API runs as a normal web process, so 2–6 minute Replicate calls are fine. Frontend stays on Vercel.
+
+1. **Create a Railway project** at [railway.app](https://railway.app) and connect this repo.
+2. **Set the service root** to the `backend` folder (Railway dashboard → your service → Settings → **Root Directory** = `backend`).
+3. **Add env vars** in Railway (Variables): `REPLICATE_API_TOKEN` (and optionally `REPLICATE_MODEL=xai/grok-4`). No need to commit `.env`.
+4. **Deploy** — Railway will use `backend/requirements.txt` and run `uvicorn main:app --host 0.0.0.0 --port $PORT`. It will assign a public URL (e.g. `https://your-app.up.railway.app`).
+5. **Point the frontend at it** — In your **Vercel** project (the frontend), add an env var: **Name** `VITE_API_URL`, **Value** your Railway URL with no trailing slash (e.g. `https://your-app.up.railway.app`). Redeploy the frontend so the build picks it up.
+
+Then disable or remove the Vercel API (so only the frontend is on Vercel): either delete the `api/` folder and rely on `VITE_API_URL`, or leave `api/` in place and keep `VITE_API_URL` set so the app calls Railway instead of same-origin `/api`.
 
 ## API
 

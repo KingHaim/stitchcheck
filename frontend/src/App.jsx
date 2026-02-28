@@ -11,21 +11,32 @@ function App() {
   const [error, setError] = useState(null)
   const [useLlm, setUseLlm] = useState(true)
 
+  // 10 min timeout for AI-enhanced analysis (Replicate can take 2–6+ min)
+  const ANALYZE_TIMEOUT_MS = 10 * 60 * 1000
+
   const analyzeFile = async (file) => {
     setLoading(true)
     setError(null)
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), ANALYZE_TIMEOUT_MS)
     try {
       const form = new FormData()
       form.append('file', file)
       const url = `${API_BASE}/api/analyze?use_llm=${useLlm}`
-      const res = await fetch(url, { method: 'POST', body: form })
+      const res = await fetch(url, { method: 'POST', body: form, signal: controller.signal })
+      clearTimeout(timeoutId)
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}))
         throw new Error(errData.detail || `Server error: ${res.status}`)
       }
       setResults(await res.json())
     } catch (e) {
-      setError(e.message)
+      clearTimeout(timeoutId)
+      if (e.name === 'AbortError') {
+        setError('Request timed out. AI analysis can take several minutes — try again or turn off AI-Enhanced for a quicker check.')
+      } else {
+        setError(e.message)
+      }
     } finally {
       setLoading(false)
     }
@@ -34,19 +45,28 @@ function App() {
   const analyzeText = async (text) => {
     setLoading(true)
     setError(null)
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), ANALYZE_TIMEOUT_MS)
     try {
       const res = await fetch(`${API_BASE}/api/analyze-text`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, use_llm: useLlm }),
+        signal: controller.signal,
       })
+      clearTimeout(timeoutId)
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}))
         throw new Error(errData.detail || `Server error: ${res.status}`)
       }
       setResults(await res.json())
     } catch (e) {
-      setError(e.message)
+      clearTimeout(timeoutId)
+      if (e.name === 'AbortError') {
+        setError('Request timed out. AI analysis can take several minutes — try again or turn off AI-Enhanced for a quicker check.')
+      } else {
+        setError(e.message)
+      }
     } finally {
       setLoading(false)
     }
@@ -89,6 +109,9 @@ function App() {
             <div className="loading-text">
               {useLlm ? 'AI-enhanced analysis in progress…' : 'Analyzing your pattern…'}
             </div>
+            {useLlm && (
+              <p className="loading-hint">This can take 2–5 minutes. Please wait.</p>
+            )}
           </div>
         )}
 
