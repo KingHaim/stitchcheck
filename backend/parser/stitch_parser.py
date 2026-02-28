@@ -164,6 +164,13 @@ def parse_instruction_segment(text: str) -> list[Operation]:
         if not token:
             i += 1
             continue
+        # "Make 1 left" / "Make 1 right" split across tokens → treat as M1L / M1R
+        if token.lower() == "make" and i + 2 < len(tokens):
+            one = tokens[i + 1].strip().rstrip(",")
+            direction = tokens[i + 2].strip().rstrip(",").lower()
+            if one == "1" and direction in ("left", "right"):
+                token = "M1L" if direction == "left" else "M1R"
+                i += 2
         op = parse_stitch(token)
         if op:
             ops.append(op)
@@ -189,6 +196,9 @@ def parse_instruction_segment(text: str) -> list[Operation]:
 
 def parse_row_instructions(text: str) -> tuple[list[Operation], list[RepeatBlock]]:
     text = text.strip()
+    # Normalize "Make 1 left" / "Make 1 right" so they tokenize as single M1L/M1R (each adds 1 st)
+    text = re.sub(r"\bMake\s+1\s+left\b", "M1L", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bMake\s+1\s+right\b", "M1R", text, flags=re.IGNORECASE)
 
     work_even = re.search(r"work\s+even", text, re.IGNORECASE)
     if work_even:

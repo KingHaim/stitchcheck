@@ -138,6 +138,15 @@ def _pattern_to_dict(pattern, llm_used: bool = False) -> dict:
     }
 
 
+@app.get("/")
+async def root():
+    return {"status": "ok", "service": "StitchCheck API", "docs": "/docs"}
+
+@app.options("/api/analyze")
+@app.options("/api/analyze-text")
+async def options_analyze():
+    return {}
+
 @app.post("/api/analyze")
 async def analyze_pattern(
     file: UploadFile = File(...),
