@@ -1,0 +1,10 @@
+# For Vercel serverless API (api/[...path].py); mirrors backend/requirements.txt
+fastapi
+uvicorn[standard]
+python-multipart
+python-docx
+pymupdf
+pydantic
+replicate
+openai
+python-dotenv

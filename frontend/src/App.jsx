@@ -2,7 +2,8 @@ import { useState } from 'react'
 import FileUpload from './components/FileUpload'
 import ResultsView from './components/ResultsView'
 
-const API_BASE = ''
+// In dev, '' uses Vite proxy to backend. In production, set VITE_API_URL to your backend (e.g. https://your-api.railway.app).
+const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
 function App() {
   const [results, setResults] = useState(null)

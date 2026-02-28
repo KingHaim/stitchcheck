@@ -82,6 +82,17 @@ npm run dev
 
 Open http://localhost:5173 in your browser.
 
+## Production deployment (Vercel for frontend + backend)
+
+This repo is set up to run **both** the React frontend and the FastAPI backend on **Vercel**:
+
+- **Build:** builds the frontend; output is `frontend/dist`.
+- **API:** `api/[...path].py` is a catch-all serverless function that runs the FastAPI app, so `/api/analyze`, `/api/analyze-text`, and `/api/health` work on the same host.
+
+No `VITE_API_URL` is needed (same origin). In the Vercel project, set **Environment Variables**: `REPLICATE_API_TOKEN` (and optionally `REPLICATE_MODEL`) for AI-enhanced mode.
+
+**Alternative (backend elsewhere):** If you host the backend on Railway, Render, etc., set `VITE_API_URL` in Vercel to that backend URL so the frontend calls it instead of same-origin `/api`.
+
 ## API
 
 ### POST /api/analyze
